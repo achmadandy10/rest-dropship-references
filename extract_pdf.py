@@ -1,5 +1,10 @@
 from PyPDF2 import PdfFileReader
 import re
+import os
+import requests
+from dotenv import load_dotenv, find_dotenv
+
+load_dotenv(find_dotenv())
 
 def extract_pdf(path):
   pdf = PdfFileReader(path)
@@ -51,9 +56,29 @@ def extract_pdf(path):
         qty = od[1]
         clean_sku = od[2].split("Pengirim:")
         sku = clean_sku[0]
+
+        url = os.getenv("API_URL") + "/product/sku/" + sku
+        payload={}
+        headers={}
+
+        response = requests.request("GET", str(url), headers=headers, data=payload)
+        response_data = response.json()
+
+        product_id = response_data["data"]["id"]
+        product_name = response_data["data"]["name"]
+        product_price = response_data["data"]["price"]
+        product_total_price = int(product_price) * int(qty)
+
         detail = {}
-        detail["qty"] = qty
-        detail["sku"] = sku
+        detail["product_id"] = product_id
+        detail["product_name"] = product_name
+        detail["product_qty"] = int(qty)
+        detail["product_sku"] = sku
+        detail["product_price"] = product_price
+        detail["product_total_price"] = product_total_price
+
         order_detail.append(detail)
     data["order_detail"] = order_detail
   return data
+
+print(extract_pdf("resi/lazada_jne.pdf"))
