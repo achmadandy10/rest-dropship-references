@@ -1,78 +1,44 @@
-from PyPDF2 import PdfFileReader
-import re
+import shutil
+import uuid
+from fastapi import FastAPI, File, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from extract_pdf import *
+import os
 
-def extract_pdf(path):
-  pdf = PdfFileReader(path)
+app = FastAPI()
 
-  data = []
-  order_detail = []
+origins = [
+    "http://localhost",
+    "http://localhost:3000",
+]
 
-  for i in range(0, pdf.numPages):
-    page = pdf.getPage(i)
-    text = page.extractText()
-    
-    date = re.compile(r'^[0-9]+')
-    send_name_lazada = re.compile(r'Penerima:')
-    send_date_lazada = re.compile(r'\d{2}\s\w{3}\s\d{4}')
-    references_id_lazada_jne = re.compile(r'JNAP-([0-9])')
-    references_id_lazada_lex = re.compile(r'LXAD-([0-9])')
-    references_id_lazada_ninja = re.compile(r'NLIDAP([0-9])')
-    order_id_lazada = re.compile(r'Total Qty :')
-    address1 = re.compile(r'Kab.')
-    address2 = re.compile(r'Kota')
-    order_detail_lazada = re.compile(r'Pengirim:')
-    
-    textSplit = text.split('\n')
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    for index, line in enumerate(textSplit):
-      if references_id_lazada_jne.match(line):
-        data.append({
-          "references_id": line
-        })
-        data.append({
-          "expedition": "JNE"
-        })
-      if references_id_lazada_lex.match(line):
-        data.append({
-          "references_id": line
-        })
-        data.append({
-          "expedition": "Lazada Express"
-        })
-      if references_id_lazada_ninja.match(line):
-        data.append({
-          "references_id": line
-        })
-        data.append({
-          "expedition": "Ninja"
-        })
-      if send_name_lazada.match(line):
-        clean = line.split("Diserahkan ke")
-        clean2 = clean[0].split("Penerima:")
-        data.append({
-          "send_name": clean2[1]
-        })
-      if send_date_lazada.match(line):
-        data.append({
-          "send_date": line
-        })
-      if order_id_lazada.match(line):
-        clean = line.split("Total Qty : ")
-        data.append({
-          "order_id": clean[1]
-        })
-      if address1.search(line) or address2.search(line):
-        if not send_name_lazada.match(textSplit[index+1]):
-          data.append({
-            "address": line+" "+textSplit[index+1]
-          })
-      if order_detail_lazada.search(line):
-        od = re.split('(\d+)', line)
-        qty = od[1]
-        clean_sku = od[2].split("Pengirim:")
-        sku = clean_sku[0]
-        order_detail.append({"sku": sku,"qty": qty})
-    data.append({"order_detail": order_detail})
-  return data   
+@app.post("/extract_references/")
+async def create_file(file: UploadFile = File(...)):
+  if not file:
+    return {"message": "No file sent"}
+  else:
+    sFile = file.filename.split(".")
+    extension = sFile[len(sFile)-1]
+    newName = str(uuid.uuid4()) + "." + extension
 
-print(extract_pdf("https://drive.google.com/file/d/18BhTwgv4vE_CzipNJCbfSqOdsbud5bke/view"))
+    with open("resi/"+newName, "wb") as pdf:
+      shutil.copyfileobj(file.file, pdf)
+
+    path = str("resi/"+newName)
+
+    data = extract_pdf(path)
+    os.remove(path)
+    return {
+      "status": 200,
+      "error": None,
+      "message": "Success extract file.",
+      "data": data
+    }
